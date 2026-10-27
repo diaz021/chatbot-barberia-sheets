@@ -1,0 +1,253 @@
+/**
+ * Tests de los horarios. Se corren con `npm test` (usa el corredor que ya
+ * trae Node, sin instalar nada).
+ *
+ * Se cubre esto y no otra cosa porque es donde ya ha dolido: los horarios
+ * estaban copiados en dos funciones y cambiar una sola rompió el bot.
+ */
+import { test, describe } from 'node:test';
+import assert from 'node:assert/strict';
+
+import {
+  HORARIOS_POR_DEFECTO,
+  NOMBRES_DIAS,
+  esTurnoValido,
+  turnoAMinutos,
+  turnosPorDefecto,
+  partirEnJornadas,
+} from '../src/config/barbers.js';
+
+import { interpretarFilasDeHorario } from '../src/services/googleSheetsService.js';
+
+const DOMINGO = 0, LUNES = 1, MARTES = 2, MIERCOLES = 3, SABADO = 6;
+
+describe('formato de los turnos', () => {
+  test('acepta el formato exacto de la columna C', () => {
+    ['9am', '10:45am', '1:30pm', '12:20pm', '5:00pm'].forEach(turno => {
+      assert.ok(esTurnoValido(turno), `debería aceptar ${turno}`);
+    });
+  });
+
+  test('rechaza lo que rompería la comparación con la hoja', () => {
+    ['9:00', '17:00', '9 am', 'nueve', '', null, '25pm', '9:5pm'].forEach(malo => {
+      assert.equal(esTurnoValido(malo), false, `no debería aceptar ${JSON.stringify(malo)}`);
+    });
+  });
+
+  test('tolera espacios de más, porque la gente los deja al escribir en Sheets', () => {
+    ['  9am', '1:30pm  ', ' 5:00PM '].forEach(turno => {
+      assert.ok(esTurnoValido(turno), `debería aceptar ${JSON.stringify(turno)}`);
+    });
+  });
+
+  test('convierte a minutos, incluidos los bordes del mediodía', () => {
+    assert.equal(turnoAMinutos('12am'), 0);
+    assert.equal(turnoAMinutos('9am'), 9 * 60);
+    assert.equal(turnoAMinutos('12pm'), 12 * 60);
+    assert.equal(turnoAMinutos('12:20pm'), 12 * 60 + 20);
+    assert.equal(turnoAMinutos('5:30pm'), 17 * 60 + 30);
+    assert.equal(turnoAMinutos('basura'), -1);
+  });
+});
+
+describe('horarios por defecto', () => {
+  test('los turnos van en orden y sin repetirse', () => {
+    for (const [barbero, semana] of Object.entries(HORARIOS_POR_DEFECTO)) {
+      semana.forEach((turnos, dia) => {
+        const minutos = turnos.map(turnoAMinutos);
+
+        assert.ok(
+          minutos.every(m => m > 0),
+          `${barbero} ${NOMBRES_DIAS[dia]}: hay un turno con formato inválido`
+        );
+        assert.deepEqual(
+          minutos, [...minutos].sort((a, b) => a - b),
+          `${barbero} ${NOMBRES_DIAS[dia]}: los turnos están desordenados`
+        );
+        assert.equal(
+          new Set(turnos).size, turnos.length,
+          `${barbero} ${NOMBRES_DIAS[dia]}: hay turnos repetidos`
+        );
+      });
+    }
+  });
+
+  test('ningún barbero trabaja domingo', () => {
+    for (const barbero of Object.keys(HORARIOS_POR_DEFECTO)) {
+      assert.deepEqual(
+        turnosPorDefecto(barbero, DOMINGO), [],
+        `${barbero} tiene turnos el domingo`
+      );
+    }
+  });
+
+  test('Camilo: miércoles solo tarde, y termina 6:30pm', () => {
+    const miercoles = turnosPorDefecto('camilo', MIERCOLES);
+    const lunes = turnosPorDefecto('camilo', LUNES);
+
+    assert.equal(miercoles.length, 10);
+    assert.equal(miercoles[0], '1:30pm');
+    assert.ok(miercoles.every(t => turnoAMinutos(t) >= 12 * 60), 'el miércoles no debería tener mañana');
+
+    // Su jornada llega hasta las 6:30pm.
+    assert.equal(lunes.at(-1), '6:30pm');
+    assert.equal(miercoles.at(-1), '6:30pm');
+    assert.ok(lunes.includes('6:00pm'), 'falta el turno de las 6:00pm');
+  });
+
+  test('Mateo: martes hasta 4:40pm, resto hasta 5:20pm, miércoles corto', () => {
+    assert.equal(turnosPorDefecto('mateo', MARTES).at(-1), '4:40pm');
+    assert.equal(turnosPorDefecto('mateo', LUNES).at(-1), '5:20pm');
+    assert.equal(turnosPorDefecto('mateo', MIERCOLES).at(-1), '1:00pm');
+  });
+
+  test('Mateo: el salto de 50 min entre 2:30pm y 3:20pm es a propósito', () => {
+    const lunes = turnosPorDefecto('mateo', LUNES);
+    const i = lunes.indexOf('2:30pm');
+
+    assert.ok(i !== -1);
+    assert.equal(turnoAMinutos(lunes[i + 1]) - turnoAMinutos(lunes[i]), 50);
+  });
+
+  test('Santiago: solo de noche, de 6pm a 9pm, cada 30 min', () => {
+    const lunes = turnosPorDefecto('santiago', LUNES);
+
+    for (const dia of [MARTES, MIERCOLES, SABADO]) {
+      assert.deepEqual(turnosPorDefecto('santiago', dia), lunes,
+        `Santiago debería tener el mismo horario el ${NOMBRES_DIAS[dia]}`);
+    }
+
+    assert.equal(lunes.length, 6);
+    assert.equal(lunes[0], '6:00pm', 'empieza a las 6');
+    assert.equal(lunes.at(-1), '8:30pm', 'el último empieza 8:30pm y termina a las 9');
+    assert.equal(turnoAMinutos(lunes.at(-1)) + 30, 21 * 60, 'cierra a las 9pm en punto');
+
+    // Nada antes del mediodía: ya no hace jornada de día.
+    assert.ok(lunes.every(t => turnoAMinutos(t) >= 18 * 60), 'todos sus turnos son de 6pm en adelante');
+
+    // Los 30 minutos, parejos.
+    for (let i = 0; i < lunes.length - 1; i++) {
+      assert.equal(turnoAMinutos(lunes[i + 1]) - turnoAMinutos(lunes[i]), 30,
+        `de ${lunes[i]} a ${lunes[i + 1]} deberían ser 30 min`);
+    }
+  });
+
+  test('un barbero que no existe devuelve lista vacía, no explota', () => {
+    assert.deepEqual(turnosPorDefecto('fulanito', LUNES), []);
+    assert.deepEqual(turnosPorDefecto(null, LUNES), []);
+    assert.deepEqual(turnosPorDefecto('camilo', 99), []);
+  });
+
+  test('ninguna jornada pasa de 8 turnos, que es el tope de una lista de WhatsApp', () => {
+    // Una lista admite 10 filas y 2 se van en Volver y Menú principal.
+    // Se miden las jornadas TAL COMO las ve el cliente: si la tarde no cabe
+    // entera, se parte sola en tarde y tarde-noche.
+    for (const [barbero, semana] of Object.entries(HORARIOS_POR_DEFECTO)) {
+      semana.forEach((turnos, dia) => {
+        const jornadas = partirEnJornadas(turnos, 8);
+
+        for (const [nombre, lista] of Object.entries(jornadas)) {
+          assert.ok(
+            lista.length <= 8,
+            `${barbero} ${NOMBRES_DIAS[dia]}: ${lista.length} turnos en ${nombre}, no caben`
+          );
+        }
+      });
+    }
+  });
+
+  test('la tarde se parte según el horario del día, no según lo que quede libre', () => {
+    const todos = turnosPorDefecto('camilo', LUNES);
+
+    // Dos turnos de tarde ya tomados: quedan 8 libres, que SÍ caben en una
+    // lista. Sin la referencia se fusionaban y el bloque desaparecía, así que
+    // el cliente veía una pantalla distinta según cuánta gente hubiera
+    // agendado ese día.
+    const libres = todos.filter(t => !['1:30pm', '2:05pm'].includes(t));
+
+    const conReferencia = partirEnJornadas(libres, 8, todos);
+    assert.deepEqual(conReferencia.tardenoche, ['5:00pm', '5:30pm', '6:00pm', '6:30pm']);
+
+    // Y con la tarde casi vacía sigue igual: manda el horario del día.
+    const casiVacio = partirEnJornadas(['6:00pm'], 8, todos);
+    assert.deepEqual(casiVacio.tardenoche, ['6:00pm']);
+    assert.deepEqual(casiVacio.tarde, []);
+  });
+
+  test('a un barbero que sí cabe, la referencia no le parte nada', () => {
+    const todos = turnosPorDefecto('mateo', LUNES);
+
+    assert.deepEqual(partirEnJornadas(['5:20pm'], 8, todos).tardenoche, []);
+    assert.deepEqual(partirEnJornadas(['5:20pm'], 8, todos).tarde, ['5:20pm']);
+  });
+
+  test('a Camilo la tarde se le parte en dos; a Mateo y Santiago no', () => {
+    const camilo = partirEnJornadas(turnosPorDefecto('camilo', LUNES), 8);
+    const mateo = partirEnJornadas(turnosPorDefecto('mateo', LUNES), 8);
+    const santiago = partirEnJornadas(turnosPorDefecto('santiago', LUNES), 8);
+
+    // Camilo: 10 turnos de tarde no caben en una lista, se separan.
+    assert.deepEqual(camilo.tardenoche, ['5:00pm', '5:30pm', '6:00pm', '6:30pm']);
+    assert.equal(camilo.tarde.at(-1), '4:25pm');
+
+    // Los otros dos caben enteros: siguen viendo dos jornadas, como siempre.
+    assert.deepEqual(mateo.tardenoche, [], 'Mateo no debería partirse');
+    assert.deepEqual(santiago.tardenoche, [], 'Santiago no debería partirse');
+    assert.ok(mateo.tarde.includes('5:20pm'), 'el 5:20pm de Mateo sigue en la tarde');
+    assert.equal(santiago.tarde.length, 6, 'Santiago sigue con sus 6 turnos en una sola jornada');
+  });
+});
+
+describe('lectura de la pestaña `horarios`', () => {
+  const encabezado = ['Barbero', 'Día', 'Turnos'];
+
+  test('interpreta una fila normal', () => {
+    const r = interpretarFilasDeHorario([
+      encabezado,
+      ['Camilo', 'Lunes', '9am, 9:35am, 1:30pm'],
+    ]);
+
+    assert.deepEqual(r.camilo[LUNES], ['9am', '9:35am', '1:30pm']);
+  });
+
+  test('no le importan tildes, mayúsculas ni espacios de más', () => {
+    const r = interpretarFilasDeHorario([
+      encabezado,
+      ['  CAMILO ', 'miercoles', ' 1:30PM ,  2:05pm '],
+    ]);
+
+    assert.deepEqual(r.camilo[MIERCOLES], ['1:30pm', '2:05pm']);
+  });
+
+  test('celda vacía significa que ese día no trabaja', () => {
+    const r = interpretarFilasDeHorario([encabezado, ['Mateo', 'Domingo', '']]);
+
+    assert.deepEqual(r.mateo[DOMINGO], []);
+  });
+
+  test('descarta los turnos mal escritos pero conserva los buenos', () => {
+    const r = interpretarFilasDeHorario([
+      encabezado,
+      ['Santiago', 'Lunes', '10:30am, 25:99xx, 11:10am, tres de la tarde'],
+    ]);
+
+    assert.deepEqual(r.santiago[LUNES], ['10:30am', '11:10am']);
+  });
+
+  test('ignora las filas con un día que no existe', () => {
+    const r = interpretarFilasDeHorario([
+      encabezado,
+      ['Camilo', 'Lunesito', '9am'],
+      ['Camilo', 'Martes', '9am'],
+    ]);
+
+    assert.equal(r.camilo[LUNES], undefined);
+    assert.deepEqual(r.camilo[MARTES], ['9am']);
+  });
+
+  test('una hoja vacía o solo con encabezado no rompe nada', () => {
+    assert.deepEqual(interpretarFilasDeHorario([]), {});
+    assert.deepEqual(interpretarFilasDeHorario([encabezado]), {});
+    assert.deepEqual(interpretarFilasDeHorario(null), {});
+  });
+});

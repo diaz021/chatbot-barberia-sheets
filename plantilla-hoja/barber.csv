@@ -1,0 +1,5 @@
+Fecha,Dia,Hora,Nombre,Telefono,Barbero,Estado,FechaRegistro,FechaHoraTurno,RecordatorioEnviado
+2026-11-03,Martes 3 de noviembre,9am,Andrés Pérez,573001110001,Camilo,Confirmado,2026-11-01T14:20:05.000Z,2026-11-03 09:00:00,No
+2026-11-03,Martes 3 de noviembre,2:05pm,Valentina Ríos,573001110002,Camilo,Cancelado,2026-11-01T15:02:41.000Z,2026-11-03 14:05:00,No
+2026-11-03,Martes 3 de noviembre,10:20am,Daniel Mora,573001110003,Mateo,Confirmado,2026-11-02T09:11:30.000Z,2026-11-03 10:20:00,No
+2026-11-04,Miércoles 4 de noviembre,6:30pm,Descanso,,Camilo,Confirmado,2026-11-02T18:00:00.000Z,2026-11-04 18:30:00,Sí

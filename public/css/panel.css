@@ -1,0 +1,227 @@
+/* Panel de administración. Mismos colores del logo que la web pública. */
+
+.panel {
+  max-width: 26rem;
+  margin: 0 auto;
+  padding: 3.5rem 1.5rem 4rem;
+  min-height: 100svh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  text-align: center;
+}
+
+.panel__logo {
+  width: min(240px, 60vw);
+  margin: 0 auto 1.5rem;
+  -webkit-mask-image: radial-gradient(ellipse 60% 56% at 50% 50%, #000 40%, transparent 76%);
+  mask-image: radial-gradient(ellipse 60% 56% at 50% 50%, #000 40%, transparent 76%);
+}
+
+.panel__etiqueta {
+  margin: 0 0 0.4rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--dorado);
+}
+
+.panel__titulo {
+  margin: 0 0 1.75rem;
+  font-family: var(--display);
+  font-size: clamp(2rem, 8vw, 2.8rem);
+  font-weight: 400;
+  line-height: 1.1;
+  color: var(--crema);
+}
+
+.panel__pasos {
+  margin: 0 0 2rem;
+  padding-left: 1.2rem;
+  text-align: left;
+  font-size: 0.9rem;
+  color: var(--texto-suave);
+}
+.panel__pasos li { margin-bottom: 0.4rem; }
+.panel__pasos strong { color: var(--dorado); }
+
+.panel__form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  text-align: left;
+}
+
+.panel__campo span {
+  display: block;
+  margin-bottom: 0.4rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--texto-suave);
+}
+
+.panel__campo input {
+  width: 100%;
+  padding: 0.9rem 1rem;
+  border: 1px solid rgba(201, 168, 106, 0.28);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--texto);
+  font-family: var(--cuerpo);
+  font-size: 1rem;
+  transition: border-color 180ms var(--curva);
+}
+
+.panel__campo input:focus {
+  outline: none;
+  border-color: var(--dorado);
+}
+
+.panel__campo input::placeholder { color: #6b6359; }
+
+/* Chrome le mete su propio fondo claro a lo que autocompleta o se pega, y el
+   campo queda blanco en medio de la pantalla oscura. No hay forma de apagarlo:
+   se tapa con una sombra interior del color que deberia tener.
+   La transicion larguisima es el truco de siempre para que no se asome el
+   fondo azul un instante antes. */
+.panel__campo input:-webkit-autofill,
+.panel__campo input:-webkit-autofill:hover,
+.panel__campo input:-webkit-autofill:focus,
+.panel__campo input:-webkit-autofill:active {
+  -webkit-text-fill-color: var(--texto);
+  -webkit-box-shadow: 0 0 0 100px #171514 inset;
+  box-shadow: 0 0 0 100px #171514 inset;
+  caret-color: var(--texto);
+  transition: background-color 100000s ease-in-out 0s;
+}
+
+/* Lo mismo con el selector estandar. Va en su propia regla a proposito: si un
+   navegador viejo no lo entiende, tumbaria tambien el -webkit- de arriba. */
+.panel__campo input:autofill {
+  -webkit-text-fill-color: var(--texto);
+  box-shadow: 0 0 0 100px #171514 inset;
+  caret-color: var(--texto);
+}
+
+/* El código se lee mejor espaciado */
+.panel__campo input[name="codigo"] {
+  letter-spacing: 0.5em;
+  font-size: 1.25rem;
+  text-align: center;
+}
+
+/* Cada paso agrupa lo suyo y mantiene la separacion del formulario. */
+.panel__paso {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+/* El +57 va fijo al lado: el numero se escribe sin el, que es como se lo
+   sabe la gente. */
+.panel__campo .panel__telefono {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  margin: 0;
+  padding-left: 0.95rem;
+  border: 1px solid rgba(201, 168, 106, 0.28);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  transition: border-color 180ms var(--curva);
+}
+
+.panel__campo .panel__telefono:focus-within { border-color: var(--dorado); }
+
+.panel__campo .panel__prefijo {
+  display: inline-block;
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  color: var(--dorado);
+}
+
+.panel__telefono input {
+  padding-left: 0;
+  border: 0;
+  border-radius: 0 10px 10px 0;
+  background: transparent;
+  letter-spacing: 0.06em;
+}
+
+.panel__telefono input:focus { border-color: transparent; }
+
+/* Cuando el envio rebota por las 24 horas de Meta. No es un error: es el
+   otro camino. */
+.panel__aviso {
+  margin: 0;
+  padding: 0.8rem 1rem;
+  border-left: 3px solid var(--dorado);
+  border-radius: 0 8px 8px 0;
+  background: rgba(201, 168, 106, 0.08);
+  font-size: 0.88rem;
+  color: var(--texto-suave);
+}
+
+.panel__enlace {
+  align-self: center;
+  padding: 0.3rem;
+  border: 0;
+  background: none;
+  color: var(--texto-suave);
+  font-family: var(--cuerpo);
+  font-size: 0.85rem;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.panel__enlace:hover { color: var(--dorado); }
+
+.panel__enviar {
+  justify-content: center;
+  margin-top: 0.5rem;
+  animation: none;   /* aquí no hace falta la entrada de la portada */
+}
+
+.panel__error {
+  margin: 0;
+  padding: 0.8rem 1rem;
+  border-left: 3px solid #e06666;
+  border-radius: 0 8px 8px 0;
+  background: rgba(224, 102, 102, 0.1);
+  font-size: 0.88rem;
+  color: #f0b5b5;
+}
+
+.panel__texto {
+  margin: 0 0 2rem;
+  color: var(--texto-suave);
+}
+.panel__texto strong { color: var(--crema); }
+
+.panel__pendiente {
+  margin-bottom: 2rem;
+  padding: 1.1rem 1.25rem;
+  border-left: 3px solid var(--dorado);
+  border-radius: 0 8px 8px 0;
+  background: rgba(201, 168, 106, 0.08);
+  text-align: left;
+  font-size: 0.9rem;
+  color: var(--texto-suave);
+}
+.panel__pendiente p { margin: 0 0 0.5rem; }
+.panel__pendiente ul { margin: 0; padding-left: 1.1rem; }
+.panel__pendiente li { margin-bottom: 0.25rem; }
+
+.panel__volver {
+  margin: 2rem 0 0;
+  font-size: 0.85rem;
+}
+.panel__volver a {
+  color: var(--texto-suave);
+  text-decoration: none;
+}
+.panel__volver a:hover { color: var(--dorado); }

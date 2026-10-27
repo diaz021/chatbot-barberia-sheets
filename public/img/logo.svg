@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" role="img" aria-labelledby="titulo">
+  <title id="titulo">Navaja Barber Club</title>
+  <defs>
+    <linearGradient id="oro" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#e0c188"/>
+      <stop offset="1" stop-color="#a8854a"/>
+    </linearGradient>
+    <linearGradient id="hoja" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#f3e6c9"/>
+      <stop offset="1" stop-color="#c9b48c"/>
+    </linearGradient>
+    <path id="arriba" d="M 70 200 A 130 130 0 0 1 330 200"/>
+    <path id="abajo" d="M 84 214 A 116 116 0 0 0 316 214"/>
+  </defs>
+
+  <!-- Sello -->
+  <circle cx="200" cy="200" r="192" fill="#0d0b0a"/>
+  <circle cx="200" cy="200" r="184" fill="none" stroke="url(#oro)" stroke-width="5"/>
+  <circle cx="200" cy="200" r="168" fill="none" stroke="#c9a86a" stroke-opacity="0.35" stroke-width="1.5"/>
+
+  <!-- Texto en arco -->
+  <text font-family="Impact, 'Arial Black', sans-serif" font-size="46" letter-spacing="9" fill="url(#oro)">
+    <textPath href="#arriba" startOffset="50%" text-anchor="middle">NAVAJA</textPath>
+  </text>
+  <text font-family="'Arial', sans-serif" font-weight="700" font-size="19" letter-spacing="7" fill="#c9a86a">
+    <textPath href="#abajo" startOffset="50%" text-anchor="middle">BARBER CLUB</textPath>
+  </text>
+
+  <!-- Navaja barbera, inclinada -->
+  <g transform="rotate(-28 200 200)">
+    <!-- mango -->
+    <rect x="96" y="191" width="128" height="22" rx="11" fill="url(#oro)"/>
+    <rect x="104" y="198" width="112" height="8" rx="4" fill="#0d0b0a" opacity="0.35"/>
+    <!-- hoja -->
+    <path d="M 222 186 L 302 182 Q 318 184 316 200 L 312 214 Q 300 222 280 220 L 222 216 Z" fill="url(#hoja)"/>
+    <path d="M 226 212 L 300 216" stroke="#0d0b0a" stroke-opacity="0.25" stroke-width="2"/>
+    <!-- eje -->
+    <circle cx="224" cy="202" r="9" fill="#0d0b0a"/>
+    <circle cx="224" cy="202" r="5" fill="url(#oro)"/>
+  </g>
+
+  <!-- Detalles a los lados -->
+  <circle cx="58" cy="200" r="5" fill="#c9a86a"/>
+  <circle cx="342" cy="200" r="5" fill="#c9a86a"/>
+</svg>

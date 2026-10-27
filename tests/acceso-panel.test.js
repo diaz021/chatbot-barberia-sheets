@@ -1,0 +1,260 @@
+/**
+ * Tests del acceso al panel.
+ *
+ * Es lo que protege los datos de los clientes: si esto falla, entra
+ * cualquiera o no entra nadie.
+ */
+import { test, describe, beforeEach } from 'node:test';
+import assert from 'node:assert/strict';
+
+process.env.ADMIN_PRINCIPAL = '573005550199';
+
+const {
+  normalizarTelefono,
+  adminsPrincipales,
+  esAdminPrincipal,
+  puedeEntrar,
+  generarCodigo,
+  verificarCodigo,
+  olvidarCodigos,
+  hayCodigoPendiente,
+  MAX_INTENTOS,
+  permitirEnvio,
+  olvidarEnvios,
+  aNumeroWhatsApp,
+  mensajeCodigo,
+  MAX_ENVIOS,
+  VENTANA_ENVIOS_MS,
+} = await import('../src/services/accesoPanel.js');
+
+const YO = '573005550199';
+const CAMILO = '573005550101';
+const DESCONOCIDO = '573009998877';
+
+beforeEach(() => {
+  olvidarCodigos();
+  olvidarEnvios();
+});
+
+describe('quién puede entrar', () => {
+  test('el admin principal sale de la variable de entorno', () => {
+    assert.deepEqual(adminsPrincipales(), [YO]);
+    assert.ok(esAdminPrincipal(YO));
+  });
+
+  test('da igual cómo se escriba el número', () => {
+    for (const forma of ['+57 300 555 0199', '57-300-555-0199', ' 573005550199 ']) {
+      assert.equal(normalizarTelefono(forma), YO, `falló con ${forma}`);
+      assert.ok(puedeEntrar(forma), `debería entrar con ${forma}`);
+    }
+  });
+
+  test('los admins agregados desde la web también entran', () => {
+    assert.ok(puedeEntrar(CAMILO, [CAMILO]));
+  });
+
+  test('un desconocido no entra, ni con la lista de admins cargada', () => {
+    assert.equal(puedeEntrar(DESCONOCIDO, [CAMILO]), false);
+  });
+
+  test('sin número no entra nadie', () => {
+    for (const vacio of ['', null, undefined, 'hola']) {
+      assert.equal(puedeEntrar(vacio, [CAMILO]), false);
+    }
+  });
+
+  test('quitar a Camilo de la lista le quita el acceso, pero no al principal', () => {
+    assert.equal(puedeEntrar(CAMILO, []), false);
+    assert.ok(puedeEntrar(YO, []), 'el admin principal no depende de la lista');
+  });
+});
+
+describe('el código', () => {
+  test('son 6 dígitos', () => {
+    for (let i = 0; i < 40; i++) {
+      assert.match(generarCodigo(YO), /^\d{6}$/);
+    }
+  });
+
+  test('no se repite (no es adivinable)', () => {
+    const vistos = new Set();
+    for (let i = 0; i < 300; i++) vistos.add(generarCodigo(YO));
+
+    assert.ok(vistos.size > 250, `salieron solo ${vistos.size} distintos de 300`);
+  });
+
+  test('el correcto entra', () => {
+    const codigo = generarCodigo(YO);
+
+    assert.deepEqual(verificarCodigo(YO, codigo), { ok: true });
+  });
+
+  test('es de un solo uso', () => {
+    const codigo = generarCodigo(YO);
+
+    assert.ok(verificarCodigo(YO, codigo).ok);
+    assert.deepEqual(verificarCodigo(YO, codigo), { ok: false, motivo: 'sin_codigo' });
+  });
+
+  test('el código de un número no sirve para otro', () => {
+    const codigo = generarCodigo(YO);
+
+    assert.deepEqual(verificarCodigo(CAMILO, codigo), { ok: false, motivo: 'sin_codigo' });
+  });
+
+  test('pedir uno nuevo invalida el anterior', () => {
+    const viejo = generarCodigo(YO);
+    const nuevo = generarCodigo(YO);
+
+    assert.notEqual(viejo, nuevo);
+    assert.deepEqual(verificarCodigo(YO, viejo), { ok: false, motivo: 'incorrecto' });
+    assert.ok(verificarCodigo(YO, nuevo).ok);
+  });
+
+  test('se bloquea tras demasiados intentos fallidos', () => {
+    const codigo = generarCodigo(YO);
+
+    for (let i = 0; i < MAX_INTENTOS; i++) {
+      assert.deepEqual(verificarCodigo(YO, '000000'), { ok: false, motivo: 'incorrecto' });
+    }
+
+    // Ya ni el código bueno sirve: hay que pedir otro.
+    assert.deepEqual(verificarCodigo(YO, codigo), { ok: false, motivo: 'sin_codigo' });
+  });
+
+  test('sin haber pedido código no se entra', () => {
+    assert.deepEqual(verificarCodigo(YO, '123456'), { ok: false, motivo: 'sin_codigo' });
+  });
+
+  test('caduca a los 5 minutos', () => {
+    const codigo = generarCodigo(YO);
+    const ahora = Date.now;
+
+    Date.now = () => ahora() + 5 * 60 * 1000 + 1000;
+    try {
+      assert.deepEqual(verificarCodigo(YO, codigo), { ok: false, motivo: 'expirado' });
+    } finally {
+      Date.now = ahora;
+    }
+  });
+
+  test('basura como código no rompe nada', () => {
+    generarCodigo(YO);
+
+    for (const basura of ['', null, undefined, 'abcdef', '12345678901', {}]) {
+      const r = verificarCodigo(YO, basura);
+      assert.equal(r.ok, false, `no debería aceptar ${JSON.stringify(basura)}`);
+    }
+  });
+
+  test('olvidarCodigos deja todo limpio', () => {
+    generarCodigo(YO);
+    assert.ok(hayCodigoPendiente(YO));
+
+    olvidarCodigos();
+    assert.equal(hayCodigoPendiente(YO), false);
+  });
+});
+
+describe('el freno de envios', () => {
+  const TEL = `tel:${YO}`;
+  const IP = 'ip:1.2.3.4';
+
+  test('deja pasar los primeros y frena el siguiente', () => {
+    for (let i = 0; i < MAX_ENVIOS; i++) {
+      assert.deepEqual(permitirEnvio([TEL, IP]), { ok: true }, `deberia pasar el ${i + 1}`);
+    }
+
+    const frenado = permitirEnvio([TEL, IP]);
+
+    assert.equal(frenado.ok, false);
+    assert.ok(frenado.esperaSegundos > 0, 'deberia decir cuanto falta');
+  });
+
+  test('cambiar de numero no reinicia la cuenta del dispositivo', () => {
+    for (let i = 0; i < MAX_ENVIOS; i++) permitirEnvio([`tel:5730000000${i}`, IP]);
+
+    assert.equal(permitirEnvio([`tel:${CAMILO}`, IP]).ok, false, 'el dispositivo ya gasto sus intentos');
+  });
+
+  test('cambiar de dispositivo no reinicia la cuenta del numero', () => {
+    for (let i = 0; i < MAX_ENVIOS; i++) permitirEnvio([TEL, `ip:9.9.9.${i}`]);
+
+    assert.equal(permitirEnvio([TEL, 'ip:5.5.5.5']).ok, false, 'ese numero ya gasto sus intentos');
+  });
+
+  test('cuando rebota por el numero, al dispositivo no se le gasta nada', () => {
+    // El numero agota sus 3 desde redes distintas.
+    for (let i = 0; i < MAX_ENVIOS; i++) permitirEnvio([TEL, `ip:9.9.9.${i}`]);
+
+    // Esta red esta limpia, pero el intento rebota por el numero.
+    assert.equal(permitirEnvio([TEL, 'ip:8.8.8.8']).ok, false);
+
+    // Y la red se queda con sus 3 completos: el rebote no le conto.
+    for (let i = 0; i < MAX_ENVIOS; i++) {
+      assert.ok(permitirEnvio([`tel:${CAMILO}`, 'ip:8.8.8.8']).ok, `deberia pasar el ${i + 1}`);
+    }
+  });
+
+  test('pasados los 10 minutos vuelve a dejar', () => {
+    for (let i = 0; i < MAX_ENVIOS; i++) permitirEnvio([TEL, IP]);
+    assert.equal(permitirEnvio([TEL, IP]).ok, false);
+
+    const ahora = Date.now;
+    Date.now = () => ahora() + VENTANA_ENVIOS_MS + 1000;
+    try {
+      assert.deepEqual(permitirEnvio([TEL, IP]), { ok: true });
+    } finally {
+      Date.now = ahora;
+    }
+  });
+
+  test('sin claves no frena nada (no romper por un dato que falte)', () => {
+    for (let i = 0; i < MAX_ENVIOS + 3; i++) {
+      assert.deepEqual(permitirEnvio([]), { ok: true });
+    }
+  });
+
+  test('olvidarEnvios levanta el freno', () => {
+    for (let i = 0; i < MAX_ENVIOS; i++) permitirEnvio([TEL, IP]);
+    assert.equal(permitirEnvio([TEL, IP]).ok, false);
+
+    olvidarEnvios();
+    assert.deepEqual(permitirEnvio([TEL, IP]), { ok: true });
+  });
+});
+
+describe('el numero que se escribe en la web', () => {
+  test('se escribe sin el 57 y se le pega solo', () => {
+    assert.equal(aNumeroWhatsApp('3005550199'), YO);
+  });
+
+  test('tambien vale si lo escriben con el 57 o con adornos', () => {
+    for (const forma of ['573005550199', '+57 300 555 0199', '300-555-0199']) {
+      assert.equal(aNumeroWhatsApp(forma), YO, `fallo con ${forma}`);
+    }
+  });
+
+  test('lo que no sea un celular colombiano se rechaza', () => {
+    for (const malo of ['', null, undefined, 'hola', '12345', '2005550199', '30055501990', '6068801234']) {
+      assert.equal(aNumeroWhatsApp(malo), '', `no deberia aceptar ${JSON.stringify(malo)}`);
+    }
+  });
+});
+
+describe('el mensaje del codigo', () => {
+  test('lleva el codigo, el tiempo que dura y el enlace del panel', () => {
+    const texto = mensajeCodigo('123456');
+
+    assert.match(texto, /\*123456\*/);
+    assert.match(texto, /5 minutos/);
+    assert.match(texto, /\/panel/);
+  });
+
+  test('es el mismo para WhatsApp y para la web', () => {
+    // Un solo texto: si alguien lo duplica, este test no lo ve, pero al menos
+    // deja claro que la funcion es la unica fuente.
+    assert.equal(mensajeCodigo('000111'), mensajeCodigo('000111'));
+    assert.notEqual(mensajeCodigo('000111'), mensajeCodigo('000222'));
+  });
+});
